@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS public.store_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- NOTE: run ALL files in supabase/migrations after this file; the hardening migration is mandatory.
 -- RLS Security Policies
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
@@ -110,7 +111,7 @@ CREATE POLICY "Users Read Self Profile" ON public.profiles FOR SELECT USING (aut
 CREATE POLICY "Users Update Self Profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Orders Policies
-CREATE POLICY "Users Create Orders" ON public.orders FOR INSERT WITH CHECK (true);
+-- Orders are created only via public.place_order() (see migrations/20261106000000_security_hardening.sql)
 CREATE POLICY "Users View Own Orders" ON public.orders FOR SELECT USING (auth.uid() = user_id OR auth.role() = 'service_role');
 CREATE POLICY "Admin Full Orders" ON public.orders FOR ALL USING (public.is_admin());
 
@@ -139,14 +140,10 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Storage Buckets: receipts & product-images
-INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', true) ON CONFLICT (id) DO NOTHING;
+-- Storage buckets/policies: see migrations/20261106000000_security_hardening.sql
+-- (receipts is PRIVATE; uploads limited to authenticated users' own folder; product-images writes are admin-only)
+INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', false) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('product-images', 'product-images', true) ON CONFLICT (id) DO NOTHING;
-
-CREATE POLICY "Public Receipts Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'receipts');
-CREATE POLICY "Public Receipts Access" ON storage.objects FOR SELECT USING (bucket_id = 'receipts');
-
-CREATE POLICY "Public Product Images Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-images');
-CREATE POLICY "Public Product Images Access" ON storage.objects FOR SELECT USING (bucket_id = 'product-images');
 
 -- Enable Realtime for Orders
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;

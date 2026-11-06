@@ -1,27 +1,28 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
+// Server-only client. Never hardcode keys here: configure them as environment variables.
+// SUPABASE_SERVICE_ROLE_KEY must NEVER be exposed with a VITE_ prefix.
 const supabaseUrl =
-  (typeof process !== "undefined" && (process.env?.SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) ||
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) ||
-  "https://onibgpjwkqxvxrxoohrz.supabase.co";
+  (typeof process !== "undefined" && (process.env?.SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) || "";
 
-const supabaseServiceKey =
+const supabaseKey =
   (typeof process !== "undefined" &&
     (process.env?.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env?.VITE_SUPABASE_ANON_KEY ||
+      process.env?.SUPABASE_PUBLISHABLE_KEY ||
       process.env?.VITE_SUPABASE_PUBLISHABLE_KEY)) ||
-  (typeof import.meta !== "undefined" &&
-    (import.meta.env?.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY)) ||
-  "sb_publishable_8W5UcYn7HiT57Z7KY-5rlw_n1u-TP2C";
+  "";
 
 export const createServerSupabaseClient = () => {
-  return createClient<Database>(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Missing SUPABASE_URL / SUPABASE key environment variables.");
+  }
+  return createClient<Database>(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 };
 
-export const supabaseServer = createServerSupabaseClient();
+let cached: ReturnType<typeof createServerSupabaseClient> | undefined;
+export const supabaseServer = new Proxy({} as ReturnType<typeof createServerSupabaseClient>, {
+  get: (_t, prop) => (cached ??= createServerSupabaseClient())[prop as keyof typeof cached],
+});
