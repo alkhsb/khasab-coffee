@@ -6,8 +6,12 @@ import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
 
+// Only same-site absolute paths are allowed (blocks open redirects such as "//evil.com" or "@evil.com").
+const safePath = (v?: string) =>
+  v && /^\/(?![/\\])[A-Za-z0-9\-._~/%?=&#]*$/.test(v) ? v : undefined;
+
 const searchSchema = z.object({
-  redirect: z.string().optional(),
+  redirect: z.string().optional().transform(safePath),
 });
 
 export const Route = createFileRoute("/auth")({
@@ -79,6 +83,11 @@ function AuthPage() {
       return;
     }
 
+    if (mode === "signup" && cleanPassword.length < 8) {
+      toast.error("كلمة المرور يجب ألا تقل عن 8 أحرف");
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === "signup") {
@@ -90,7 +99,6 @@ function AuthPage() {
             data: {
               full_name: cleanName,
               phone: cleanPhone,
-              role: "customer",
             },
             emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}${redirect || "/"}` : undefined,
           },

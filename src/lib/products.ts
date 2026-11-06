@@ -297,12 +297,31 @@ export const mapDbProduct = (row: any): Product => {
   };
 };
 
+// Cost prices are NOT readable through the public API (column privileges); admins fetch them via RPC.
+const PUBLIC_PRODUCT_COLUMNS =
+  "id,slug,name,category,short,description,variants,image,images,stock_quantity,low_stock_threshold,is_active,is_coffee,origin,process,notes,specs,badge,best_seller,created_at";
+
+export const fetchAdminProductsFromSupabase = async (): Promise<Product[]> => {
+  const list = await fetchProductsFromSupabase();
+  try {
+    const { data } = await (supabase as any).rpc("admin_product_costs");
+    const costs = new Map((data ?? []).map((c: any) => [c.slug, c]));
+    return list.map((p) => {
+      const c: any = costs.get(p.slug);
+      return c ? { ...p, costPriceYer: Number(c.cost_price_yer) || 0, costPriceSar: Number(c.cost_price_sar) || 0 } : p;
+    });
+  } catch {
+    return list;
+  }
+};
+
 export const fetchProductsFromSupabase = async (): Promise<Product[]> => {
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select(PUBLIC_PRODUCT_COLUMNS)
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (error) {
       console.error("Fetch products error from Supabase:", error);

@@ -42,7 +42,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { useCurrency } from "@/lib/currency";
-import { formatPrice, products as defaultProducts, brandLogo, fetchProductsFromSupabase, type Product } from "@/lib/products";
+import { formatPrice, products as defaultProducts, brandLogo, fetchAdminProductsFromSupabase, type Product } from "@/lib/products";
 import {
   parseStoreSettings,
   defaultBankAccounts,
@@ -128,23 +128,8 @@ function AdminPage() {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return false;
 
-      const isOwner =
-        userData.user.email === "tekniq1011@gmail.com" ||
-        userData.user.email === "gfyhhgftyj@gmail.com" ||
-        userData.user.user_metadata?.role === "admin";
-
-      if (isOwner) {
-        // Auto-heal admin role in user_roles table so Postgres RLS policies allow full CRUD
-        try {
-          await supabase
-            .from("user_roles")
-            .upsert({ user_id: userData.user.id, role: "admin" }, { onConflict: "user_id" });
-        } catch {
-          // ignore
-        }
-        return true;
-      }
-
+      // Authorization is decided ONLY by the database (user_roles via RLS). Never trust client-side
+      // flags such as user_metadata or hardcoded emails: they are user-editable / publicly visible.
       try {
         const { data } = await supabase
           .from("user_roles")
@@ -167,7 +152,8 @@ function AdminPage() {
       const { data, error } = await supabase
         .from("orders")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(2000);
       if (error) throw error;
       return (data ?? []) as unknown as Order[];
     },
@@ -177,7 +163,7 @@ function AdminPage() {
   const productsQuery = useQuery({
     queryKey: ["admin-products"],
     queryFn: async () => {
-      return await fetchProductsFromSupabase();
+      return await fetchAdminProductsFromSupabase();
     },
   });
 
@@ -185,7 +171,7 @@ function AdminPage() {
   const customersQuery = useQuery({
     queryKey: ["admin-customers"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("*");
+      const { data, error } = await supabase.from("profiles").select("*").limit(5000);
       if (error) return [];
       return data ?? [];
     },

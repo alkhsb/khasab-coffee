@@ -138,6 +138,11 @@ function CheckoutPage() {
 
   const onFile = (file?: File) => {
     if (!file) return;
+    const okTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"];
+    if (!okTypes.includes(file.type) || file.size > 5 * 1024 * 1024) {
+      toast.error("الملف غير مدعوم أو أكبر من 5 ميجابايت (صورة أو PDF)");
+      return;
+    }
     setReceiptFile(file);
     setReceipt(URL.createObjectURL(file));
     toast.success("تم إرفاق صورة السند بنجاح");
@@ -158,16 +163,18 @@ function CheckoutPage() {
     }
 
     setSubmitting(true);
-    const code = "KH-" + Math.floor(100000 + Math.random() * 899999);
+    const rnd = crypto.getRandomValues(new Uint32Array(1))[0] % 10000000;
+    let code = "KH-" + String(rnd).padStart(7, "0");
     try {
       let receiptPath: string | null = null;
       if (receiptFile) {
         try {
-          const ext = receiptFile.name.split(".").pop() || "jpg";
-          const path = `${code}-${Date.now()}.${ext}`;
+          const extMap: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "application/pdf": "pdf" };
+          const ext = extMap[receiptFile.type] || "jpg";
+          const path = `${user.id}/${code}-${Date.now()}.${ext}`;
           const { error: upErr } = await supabase.storage
             .from("receipts")
-            .upload(path, receiptFile, { contentType: receiptFile.type, upsert: true });
+            .upload(path, receiptFile, { contentType: receiptFile.type, upsert: false });
           if (!upErr) receiptPath = path;
         } catch (e) {
           console.warn("Receipt upload notice:", e);
@@ -199,18 +206,9 @@ function CheckoutPage() {
           slug: i.slug,
           name: i.name,
           qty: i.qty,
-          price_yer: i.price,
-          price_sar: i.priceSar,
           options: i.options ?? null,
         })),
-        total_yer: total,
-        total_sar: totalSar,
-        status: "pending",
       };
-
-      if (user?.id) {
-        orderPayload.user_id = user.id;
-      }
 
       const { data: rpcData, error } = await supabase.rpc("place_order", { payload: orderPayload });
 
@@ -231,6 +229,8 @@ function CheckoutPage() {
         } catch {}
       }
 
+      const serverCode = (rpcData as any)?.code;
+      if (typeof serverCode === "string") code = serverCode;
       setOrderId(code);
       clear();
       toast.success("تم إرسال طلبك بنجاح!");
